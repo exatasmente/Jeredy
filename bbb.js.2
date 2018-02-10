@@ -3,6 +3,7 @@ let http = require('http').Server(app);
 let io = require('socket.io')(http);
 let b = require('bonescript');
 let v = 0;
+let conn = false;
 var pinos = {
   left:
     {
@@ -16,6 +17,7 @@ var pinos = {
    reverse:['P8_12','P8_16']
   }
 };
+
 b.pinMode(pinos.left.back, b.OUTPUT);
 b.pinMode(pinos.left.front, b.OUTPUT);
 b.pinMode(pinos.right.back, b.OUTPUT);
@@ -33,8 +35,41 @@ b.digitalWrite(pinos.right.back, 0);
 
 
 io.on('connection', (socket) => {
+  socket.on('error',function(){
+    conn= false;
+    console.log("Erro");
+    b.digitalWrite(pinos.left.reverse[0],0);
+    b.digitalWrite(pinos.left.reverse[1],0);
+    b.digitalWrite(pinos.right.reverse[0],0);
+    b.digitalWrite(pinos.right.reverse[1],0);
+    b.digitalWrite(pinos.left.front, 0);
+    b.digitalWrite(pinos.left.back, 0);
+    b.digitalWrite(pinos.right.front, 0);
+    b.digitalWrite(pinos.right.back, 0);
+
+
+    
+  });
+  socket.on('pair',function(){
+    console.log('Nova Conexão');
+    if(conn){
+      console.log('Negada');
+      socket.emit('userOn',{});
+    }else{
+      console.log('Autorizado');
+      socket.emit('userAllowed');
+      conn= true;
+    }
+  });
+  socket.on('jeredy',function(){
+          conn = false;
+	  io.emit('jeredy',{nome: 'Jeredy Controller',
+                         versao: 'Palmas 4', 
+                         pinos: JSON.stringify(pinos)});
+  });
 
   socket.on('disconnect', function () {
+    conn = false;
     io.emit('close', { message: 'Conex  o encerrrada', event: 'close' });
   });
 
@@ -58,6 +93,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('freio', function () {
+
     console.log("Freia");
     b.digitalWrite(pinos.left.reverse[0],0);
     b.digitalWrite(pinos.left.reverse[1],0);
@@ -67,6 +103,7 @@ io.on('connection', (socket) => {
     b.digitalWrite(pinos.left.back, 0);
     b.digitalWrite(pinos.right.front, 0);
     b.digitalWrite(pinos.right.back, 0);
+
     io.emit('freia', { message: 'Freio', event: 'break' });
   });
   socket.on('esquerda', function () {
