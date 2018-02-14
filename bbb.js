@@ -1,93 +1,138 @@
-let app = require('express')();
-let http = require('http').Server(app);
-let io = require('socket.io')(http);
-let b = require('bonescript');
-let v = 0.5;
+const App = require('express');
+const Http = require('http').Server;
+const Server = require('socket.io');
+
 var pinos = {
   left:
     {
       front: 'P9_21',
-      back: 'P9_16'
+      back: 'P9_16',
+      reverse: ['P8_11', 'P8_15']
     },
   right: {
     front: 'P9_14',
-    back: 'P9_22'
+    back: 'P9_22',
+    reverse: ['P8_12', 'P8_16']
   }
 };
 
-io.on('connection', (socket) => {
 
-  socket.on('disconnect', function () {
-    io.emit('close', { message: 'Conex  o encerrrada', event: 'close' });
-  });
+class RobotServer {
 
-  socket.on('getPins', function () {
-    console.log('pinos');
-    io.emit('pins', { pinos: pinos, event: 'pinos' });
-  });
+  constructor(pins, port) {
+    this.bone = require('bonescript');
+    this.pins = pins;
+    this.userConnected = false;
+    this.app = new App();
+    this.http = new Http(this.app);
+    this.io = new Server(this.http);
+    this.http.listen(port, () => { console.log('Server Ready'); });
 
-  socket.on('acelerador', function () {
-    switch (v) {
-      case 0.5:
-        v = 0.4;
-        break;
-      case 0.4:
-        v = 0.3;
-        break;
-      case 0.3:
-        v = 0.2;
-        break;
-      case 0.2:
-        v = 0.1;
-        break;
-      case 0.1:
-        v = 0;
-        break;
-    }
-    b.pinMode(pinos.left.back, b.OUTPUT);
-    b.pinMode(pinos.left.front, b.OUTPUT);
-    b.pinMode(pinos.right.back, b.OUTPUT);
-    b.pinMode(pinos.right.front, b.OUTPUT);
-    console.log("Acelera");
-    v = 0.5;
-    b.analogWrite(pinos.left.front, v, 2000.0);
-    b.analogWrite(pinos.left.back, v, 2000.0);
-    b.analogWrite(pinos.right.back, v, 2000.0);
-    b.analogWrite(pinos.right.front, v, 2000.0);
-    
-    io.emit('acelera', { message: 'Acelera', event: 'gas' });
-  });
-
-  socket.on('freio', function () {
-    console.log("Freia");
-    b.pinMode(pinos.left.back, b.OUTPUT);
-    b.pinMode(pinos.left.front, b.OUTPUT);
-    b.pinMode(pinos.right.back, b.OUTPUT);
-    b.pinMode(pinos.right.front, b.OUTPUT);
-    b.analogWrite(pinos.left.front, 0.5, 2000.0);
-    b.analogWrite(pinos.left.back, 0.5, 2000.0);
-    b.analogWrite(pinos.right.front, 0.5, 2000.0);
-    b.analogWrite(pinos.right.back, 0.5, 2000.0);
-    io.emit('freia', { message: 'Freio', event: 'break' });
-  });
-  socket.on('direita', function () {
-    io.emit('direita', { message: 'Direita', event: 'right' });
-  });
-  socket.on('esquerda', function () {
-    io.emit('esquerda', { message: 'Esquerda', event: 'left' });
-  });
-  socket.on('cambio', function (pos) {
-    socket.pos = pos;
-    io.emit('cambio', { message: 'Cambio', event: 'march' });
-  });
-
-});
-
-var port = 1337;
-
-http.listen(port, function () {
-  console.log('listening in http://192.168.0.13:' + port);
-});
+    this.io.on('connection', (socket) => { this.startConn(socket) });
+    this.startRobot();
+  }
+  startRobot() {
+    this.bone.pinMode(this.pins.left.back, this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.left.front, this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.right.back, this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.right.front, this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.left.reverse[0], this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.right.reverse[0], this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.left.reverse[1], this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.right.reverse[1], this.bone.OUTPUT);
+    this.moveRobot({
+      left:
+        {
+          front: 0,
+          back: 0,
+          reverse: [0, 0]
+        },
+      right: {
+        front: 0,
+        back: 0,
+        reverse: [0, 0]
+      }
+    });
+  }
 
 
+  moveRobot(values) {
+    this.bone.digitalWrite(this.pins.left.reverse[0], values.left.reverse[0]);
+    this.bone.digitalWrite(this.pins.left.reverse[1], values.left.reverse[1]);
+    this.bone.digitalWrite(this.pins.right.reverse[0], values.right.reverse[0]);
+    this.bone.digitalWrite(this.pins.right.reverse[1], values.right.reverse[1]);
+    this.bone.digitalWrite(this.pins.left.front, values.left.front);
+    this.bone.digitalWrite(this.pins.left.back, values.left.back);
+    this.bone.digitalWrite(this.pins.right.front, values.right.front);
+    this.bone.digitalWrite(this.pins.right.back, values.right.back);
+  }
 
+  startConn(socket) {
+    socket.on('moveRobot', (values) => {
+      this.moveRobot(values);
+    })
+    socket.on('latency', (startTime, cb) => {
+      cb(startTime);
+    });
+
+    socket.on('error', () => {
+      console.log('Connection Error');
+      this.userConnected = false;
+      this.moveRobot({
+        left:
+          {
+            front: 0,
+            back: 0,
+            reverse: [0, 0]
+          },
+        right: {
+          front: 0,
+          back: 0,
+          reverse: [0, 0]
+        }
+      });
+    });
+
+    socket.on('pair', (cb) => {
+      console.log('New Connection Request');
+      if (this.userConnected) {
+        cb(false);
+      } else {
+        this.userConnected = true;
+        cb(true);
+      }
+    });
+
+
+    socket.on('getRobot', (cb) => {
+      console.log('New Get Bot Request');
+      cb({
+        name: 'Jeredy Controller',
+        version: 'Palmas 5',
+        pins: this.pins
+      });
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Connection  Closed');
+      this.userConnected = false;
+      this.moveRobot({
+        left:
+          {
+            front: 0,
+            back: 0,
+            reverse: [0, 0]
+          },
+        right: {
+          front: 0,
+          back: 0,
+          reverse: [0, 0]
+        }
+      });
+    });
+  }
+}
+
+
+var servidor = new RobotServer(pinos, 1337);
+console.log(servidor);
