@@ -61,21 +61,25 @@ io.on('connection', (socket) => {
       conn= true;
     }
   });
-  socket.on('jeredy',function(){
+  socket.on('getRobot',function(cb){
           conn = false;
-	  io.emit('jeredy',{nome: 'Jeredy Controller',
-                         versao: 'Palmas 4', 
-                         pinos: JSON.stringify(pinos)});
+	  cb({name: 'Jeredy Controller',
+                         version: 'Palmas 4.5', 
+                         pins: JSON.stringify(pinos)});
   });
 
+  socket.on('latency',function(time,cb){
+    console.log(time);
+    cb(time);
+  });
   socket.on('disconnect', function () {
     conn = false;
-    io.emit('close', { message: 'Conex  o encerrrada', event: 'close' });
+    
   });
 
   socket.on('getPins', function () {
     console.log('pinos');
-    io.emit('pins', { pinos: pinos, event: 'pinos' });
+    
   });
 
   socket.on('acelerador', function () {
@@ -83,13 +87,13 @@ io.on('connection', (socket) => {
    b.digitalWrite(pinos.left.reverse[1],0);
    b.digitalWrite(pinos.right.reverse[0],0);
    b.digitalWrite(pinos.right.reverse[1],0);
-   console.log("Acelera : "+v);
+   console.log("Acelera");
    b.digitalWrite(pinos.left.front, 1);
     b.digitalWrite(pinos.left.back, 1);
     b.digitalWrite(pinos.right.back, 1);
     b.digitalWrite(pinos.right.front, 1);
     
-    io.emit('acelera', { message: v, event: 'gas' });
+    
   });
 
   socket.on('freio', function () {
@@ -104,8 +108,7 @@ io.on('connection', (socket) => {
     b.digitalWrite(pinos.right.front, 0);
     b.digitalWrite(pinos.right.back, 0);
 
-    io.emit('freia', { message: 'Freio', event: 'break' });
-  });
+ });
   socket.on('esquerda', function () {
     b.digitalWrite(pinos.left.front, 1);
     b.digitalWrite(pinos.left.back, 1);
@@ -113,7 +116,6 @@ io.on('connection', (socket) => {
     b.digitalWrite(pinos.right.back, 0);
     b.digitalWrite(pinos.right.reverse[0],1);
     b.digitalWrite(pinos.right.reverse[1],1);
-    io.emit('esquerda', { message: 'Esquerda', event: 'left' });
     console.log('Esquerda');
   });
   socket.on('direita', function () {
@@ -123,7 +125,6 @@ io.on('connection', (socket) => {
     b.digitalWrite(pinos.left.back, 0);
     b.digitalWrite(pinos.left.reverse[0],1);
     b.digitalWrite(pinos.left.reverse[1],1);
-    io.emit('direita', { message: 'Direita', event: 'right' });
     console.log('Direita');
   });
   socket.on('reverso', function () {
@@ -132,15 +133,14 @@ io.on('connection', (socket) => {
     b.digitalWrite(pinos.left.reverse[1],1);
     b.digitalWrite(pinos.right.reverse[0],1);
     b.digitalWrite(pinos.right.reverse[1],1);
-    io.emit('re', { message: 'Re', event: 'reverse' });
-  });
+ });
 
 });
 
 var port = 1337;
 
 http.listen(port, function () {
-  console.log('listening in http://192.168.0.13:' + port);
+  console.log('Server Ready');
 });
 
 

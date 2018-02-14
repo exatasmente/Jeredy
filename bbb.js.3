@@ -1,0 +1,186 @@
+
+const App = require('express');
+const Http = require('http').Server;
+const Server = require('socket.io');
+
+var pinos = {
+  left:
+    {
+      front: 'P9_21',
+      back: 'P9_16',
+      reverse: ['P8_11', 'P8_15']
+    },
+  right: {
+    front: 'P9_14',
+    back: 'P9_22',
+    reverse: ['P8_12', 'P8_16']
+  }
+};
+
+
+class RobotServer {
+
+  constructor(pins, port) {
+    this.bone = require('bonescript');
+    this.pins = pins;
+    this.userConnected = false;
+    this.moviment = {
+      gas: false,
+      reverse: false,
+      left: false,
+      right: false
+    };
+
+    this.app = new App();
+    this.http = new Http(this.app);
+    this.io = new Server(this.http);
+    this.http.listen(port,()=>{console.log('Server Ready');});
+
+    this.io.on('connection', (socket)=>{this.startConn(socket)});
+    this.startRobot();
+  }
+  startRobot() {
+    this.bone.pinMode(this.pins.left.back, this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.left.front, this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.right.back, this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.right.front, this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.left.reverse[0], this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.right.reverse[0], this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.left.reverse[1], this.bone.OUTPUT);
+    this.bone.pinMode(this.pins.right.reverse[1], this.bone.OUTPUT);
+    this.robotBreak(1);
+  }
+
+
+  robotBreak(value) {
+    this.setGas(false);
+    this.setReverse(false);
+  }
+
+  setReverse(value) {
+    if(this.moviment.reverse == value) return ;
+    
+    this.bone.digitalWrite(this.pins.left.reverse[0], value);
+    this.bone.digitalWrite(this.pins.left.reverse[1], value);
+    this.bone.digitalWrite(this.pins.right.reverse[0], value);
+    this.bone.digitalWrite(this.pins.right.reverse[1], value);
+    this.moviment.reverse = value;
+  }
+  setGas(value) {
+     if(this.moviment.gas == value) return ;
+    
+    this.bone.digitalWrite(this.pins.left.front, value);
+    this.bone.digitalWrite(this.pins.left.back, value);
+    this.bone.digitalWrite(this.pins.right.back, value);
+    this.bone.digitalWrite(this.pins.right.front, value);
+    this.moviment.gas = value;
+  }
+  robotLeft() {
+    this.robotBreak(2);
+    this.moviment.right = false;
+    if (this.moviment.gas) {
+      this.setReverse(false);
+      this.bone.digitalWrite(this.pins.right.back, 0);
+      this.bone.digitalWrite(this.pins.right.front, 0);
+    } else if (this.moviment.reverse) {
+      this.setGas(false);
+      this.bone.digitalWrite(this.pins.left.reverse[0], 0);
+      this.bone.digitalWrite(this.pins.left.reverse[1], 0);
+    } else {
+      this.robotBreak(2);
+      this.bone.digitalWrite(this.pins.right.front, 0);
+      this.bone.digitalWrite(this.pins.right.back, 0);
+      this.bone.digitalWrite(this.pins.left.front, 1);
+      this.bone.digitalWrite(this.pins.left.back, 1);
+      this.bone.digitalWrite(this.pins.right.reverse[0], 1);
+      this.bone.digitalWrite(this.pins.right.reverse[1], 1);
+
+    }
+    this.moviment.reverse = false;
+    this.moviment.left = true;
+  }
+  robotRight() {
+    this.moviment.left = false;
+    this.robotBreak(2);
+    if (this.moviment.gas) {
+      this.setReverse(false);
+      this.bone.digitalWrite(this.pins.left.back, 0);
+      this.bone.digitalWrite(this.pins.left.front, 0);
+    } else if (this.moviment.reverse) {
+      this.setGas(false);
+      this.bone.digitalWrite(this.pins.right.reverse[0], 0);
+      this.bone.digitalWrite(this.pins.right.reverse[1], 0);
+    } else {
+      this.robotBreak(2);
+      this.bone.digitalWrite(this.pins.left.front, 0);
+      this.bone.digitalWrite(this.pins.left.back, 0);
+      this.bone.digitalWrite(this.pins.right.front, 1);
+      this.bone.digitalWrite(this.pins.right.back, 1);
+
+      this.bone.digitalWrite(this.pins.left.reverse[0], 1);
+      this.bone.digitalWrite(this.pins.left.reverse[1], 1);
+
+    }
+    this.moviment.left = false;
+    this.moviment.right = true;
+  }
+
+  startConn(socket) {
+    socket.on('robotGas',()=>{ 
+        this.setReverse(false);
+        this.setGas(true);
+    });
+    socket.on('robotReverse',()=>{ 
+        this.setGas(false);
+        this.setReverse(true);
+    });
+
+    socket.on('robotBreak',(value)=>{ 
+      console.log(value);
+      this.robotBreak(value)
+    });
+    socket.on('robotLeft', ()=>{
+         this.robotLeft()
+    });
+    socket.on('robotRight',()=>{ this.robotRight()});
+
+    socket.on('latency', (startTime, cb) => {
+      cb(startTime);
+    });
+
+    socket.on('error', () => {
+      console.log('Connection Error');
+      this.userConnected = false;
+    });
+
+    socket.on('pair', (cb) => {
+      console.log('New Connection Request');
+      if (this.userConnected) {
+        cb(false);
+      } else {
+        this.userConnected = true;
+        cb(true);
+      }
+    });
+
+
+    socket.on('getRobot', (cb) => {
+      console.log('New Get Bot Request');
+      cb({
+        name: 'Jeredy Controller',
+        version: 'Palmas 5',
+        pins: this.pins
+      });
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Connection  Closed');
+      this.userConnected = false;
+      this.robotBreak(2);
+    });
+  }
+}
+
+
+var servidor = new RobotServer(pinos,1337);
+console.log(servidor);
